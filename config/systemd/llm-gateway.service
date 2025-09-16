@@ -1,0 +1,16 @@
+[Unit]
+Description=LLM Gateway with regex-based DLP
+After=network.target
+
+[Service]
+Type=simple
+User=llm-gateway
+Group=llm-gateway
+WorkingDirectory=/opt/llm-gateway
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/llm-gateway/venv/bin/uvicorn app.app:app --host 127.0.0.1 --port 8000
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
