@@ -1115,11 +1115,15 @@ const player = {
 };
 const SK = { fire: { mp: 12, cd: 0.45, lvl: 1 }, nova: { mp: 28, cd: 6, lvl: 2 }, meteor: { mp: 45, cd: 12, lvl: 3 } };
 const xpToNext = l => Math.round(80 * Math.pow(l, 1.55));
-const baseDmg = () => 18 + player.lvl * 6;
+const baseDmg = () => 14 + player.lvl * 5;
+const ARMOR_K = 100; // armor that halves incoming damage (ratio formula: dmg * K / (K + armor))
+const playerArmor = () => 6 + player.lvl * 5;
+const CRIT_CHANCE = 0.1, CRIT_MULT = 1.75;
+function rollDmg(base, critChance = CRIT_CHANCE) { const crit = Math.random() < critChance; return [Math.round(base * rand(0.9, 1.1) * (crit ? CRIT_MULT : 1)), crit]; }
 function recalcStats() { player.maxHp = 100 + player.lvl * 20; player.maxMp = 70 + player.lvl * 10; }
 
 // ================= CAMERA =================
-const cam = { yaw: 0, pitch: 0.32, dist: 9.5, pos: new THREE.Vector3(), look: new THREE.Vector3(), shake: 0 };
+const cam = { yaw: 0, pitch: 0.32, dist: 9.5, pos: new THREE.Vector3(), look: new THREE.Vector3(), shake: 0, shakeT: 0, cut: false };
 const drone = { active: false, x: 0, z: 0, alt: 340, yaw: 0 };
 let titleMode = true, titleT = 0;
 
@@ -1130,10 +1134,10 @@ const G = {
 };
 const eyeMat = new THREE.MeshBasicMaterial({ color: 0x0a0a12 });
 const DEFS = {
-  slime: { name: 'רפש', hp: 60, dmg: 8, speed: 3.4, aggro: 17, range: 1.7, atkCd: 1.4, windup: 0.45, xp: 15, gold: [2, 6], radius: 0.85, barY: 2.1, color: [0.5, 2.5, 0.8] },
-  wolf: { name: 'זאב צל', hp: 120, dmg: 13, speed: 8.8, aggro: 25, range: 2.3, atkCd: 1.25, windup: 0.38, xp: 32, gold: [4, 10], radius: 0.95, barY: 2.3, color: [1.6, 0.6, 2.6] },
-  golem: { name: 'גולם סלע', hp: 340, dmg: 26, speed: 3.1, aggro: 21, range: 3.4, atkCd: 2.3, windup: 0.85, xp: 75, gold: [10, 22], radius: 1.7, barY: 5.6, color: [3.0, 1.2, 0.3] },
-  boss: { name: 'אדון הגולמים', hp: 3200, dmg: 38, speed: 3.8, aggro: 44, range: 6.2, atkCd: 2.0, windup: 1.0, xp: 1200, gold: [300, 300], radius: 3.6, barY: 0, color: [2.2, 0.8, 4.0] },
+  slime: { name: 'רפש', hp: 60, dmg: 11, speed: 3.4, aggro: 17, range: 1.7, atkCd: 1.4, windup: 0.45, xp: 15, gold: [2, 6], radius: 0.85, barY: 2.1, color: [0.5, 2.5, 0.8] },
+  wolf: { name: 'זאב צל', hp: 120, dmg: 25, speed: 8.8, aggro: 25, range: 2.3, atkCd: 1.25, windup: 0.38, xp: 32, gold: [4, 10], radius: 0.95, barY: 2.3, color: [1.6, 0.6, 2.6] },
+  golem: { name: 'גולם סלע', hp: 300, dmg: 32, speed: 3.1, aggro: 21, range: 3.4, atkCd: 2.3, windup: 0.85, xp: 75, gold: [10, 22], radius: 1.7, barY: 5.6, color: [3.0, 1.2, 0.3] },
+  boss: { name: 'אדון הגולמים', hp: 3200, dmg: 46, speed: 3.8, aggro: 44, range: 6.2, atkCd: 2.0, windup: 1.0, xp: 1200, gold: [300, 300], radius: 3.6, barY: 0, color: [2.2, 0.8, 4.0] },
 };
 function emat(hex, o = {}) { return new THREE.MeshStandardMaterial({ color: hex, roughness: 0.75, ...o }); }
 const BUILD = {
@@ -1261,8 +1265,8 @@ const QUESTS = [
   { title: 'קול מן הכפר', desc: 'דבר עם הזקנה מירן ליד המדורה בכיכר הכפר.', type: 'talk', target: () => npcs[0].pos },
   { title: 'מגפת הרפש', desc: 'הבס רפשים באחו הזהב שמדרום לכפר.', type: 'kill', kind: 'slime', need: 6, target: () => P.meadow, reward: { xp: 80, gold: 40 } },
   { title: 'אור הבדולח', desc: 'הלך בשביל מזרחה אל מקדש הבדולח ונגע באור.', type: 'reach', target: () => P.shrine, radius: 13, reward: { xp: 120, gold: 60, blade: 1 } },
-  { title: 'יער הצללים', desc: 'הבס זאבי צל ביער שבמערב.', type: 'kill', kind: 'wolf', need: 5, target: () => P.forest, reward: { xp: 200, gold: 100 } },
-  { title: 'שומרי ההר', desc: 'נפץ גולמי סלע ברגלי הרי השן שבצפון.', type: 'kill', kind: 'golem', need: 3, target: () => P.foothills, reward: { xp: 300, gold: 150 } },
+  { title: 'יער הצללים', desc: 'הבס זאבי צל ביער שבמערב.', type: 'kill', kind: 'wolf', need: 5, target: () => P.forest, reward: { xp: 260, gold: 100 } },
+  { title: 'שומרי ההר', desc: 'נפץ גולמי סלע ברגלי הרי השן שבצפון.', type: 'kill', kind: 'golem', need: 3, target: () => P.foothills, reward: { xp: 520, gold: 150 } },
   { title: 'אדון הגולמים', desc: 'עלה דרך הקניון אל חורבות הצפון והבס את אדון הגולמים.', type: 'kill', kind: 'boss', need: 1, target: () => P.ruins, reward: { xp: 1000, gold: 500, blade: 3 } },
   { title: 'אתריה חופשית', desc: 'הממלכה ניצלה. העולם כולו פתוח לחקירה, והזאבים עדיין מסתובבים.', type: 'free', target: () => null },
 ];
@@ -1301,7 +1305,7 @@ function addXp(n) {
     player.xp -= xpToNext(player.lvl); player.lvl++; recalcStats(); player.hp = player.maxHp; player.mp = player.maxMp;
     AudioSys.play('level'); flashScreen(0.35);
     const unlock = player.lvl === SK.nova.lvl ? ' · נפתחה: נובה ארקנית (E)' : player.lvl === SK.meteor.lvl ? ' · נפתח: מטאור (R)' : '';
-    banner(`רמה ${player.lvl}!`, `חיים ומאנה מלאים · נזק החרב עלה${unlock}`);
+    banner(`רמה ${player.lvl}!`, `חיים ומאנה מלאים · נזק ושריון עלו${unlock}`);
     for (let i = 0; i < 160; i++) { const a = Math.random() * Math.PI * 2, r = Math.random() * 1.6; fx.emit(player.pos.x + Math.cos(a) * r, player.pos.y + Math.random() * 0.5, player.pos.z + Math.sin(a) * r, 0, rand(4, 14), 0, 3.2, 2.4, 0.8, rand(0.25, 0.6), rand(0.8, 1.6), { drag: 0.6 }); }
     spawnRing(player.pos.x, player.pos.z, { color: [3, 2.2, 0.6], r1: 9, dur: 0.8 });
     flashLight(player.pos.x, player.pos.y + 3, player.pos.z, 0xffd27a, 80, 30, 1.2);
@@ -1309,7 +1313,7 @@ function addXp(n) {
 }
 let flashV = 0, hurtV = 0, hitstop = 0, timeScale = 1;
 function flashScreen(v) { flashV = Math.max(flashV, v); }
-function addShake(v) { if (reducedMotion) v *= 0.25; cam.shake = Math.min(1.2, cam.shake + v); }
+function addShake(v) { if (reducedMotion) v *= 0.25; cam.shake = Math.min(1, cam.shake + v); }
 
 function nearestEnemy(pos, maxD, dirX, dirZ, minDot = -2) {
   let best = null, bd = maxD;
@@ -1339,8 +1343,8 @@ function doMeleeHit() {
   for (const e of enemies) {
     if (e.dead) continue; const dx = e.pos.x - p.pos.x, dz = e.pos.z - p.pos.z; const d = Math.hypot(dx, dz) - e.def.radius * 0.7;
     if (d > range) continue; if (!spin && (dx * fx_ + dz * fz_) / (Math.hypot(dx, dz) || 1) < 0.15) continue;
-    const crit = Math.random() < 0.15; let dmg = baseDmg() * bc.mult * [1, 1.15, 1.75][combo] * rand(0.9, 1.1); if (crit) dmg *= 2;
-    damageEnemy(e, Math.round(dmg), spin ? 9 : 6, p.pos, crit); hits++;
+    const [dmg, crit] = rollDmg(baseDmg() * bc.mult * [1, 1.15, 1.75][combo]);
+    damageEnemy(e, dmg, spin ? 9 : 6, p.pos, crit); hits++;
   }
   if (hits) { hitstop = Math.max(hitstop, spin ? 0.08 : 0.05); addShake(spin ? 0.3 : 0.18); }
 }
@@ -1364,7 +1368,7 @@ function explodeFire(pos) {
   dust.burst(pos.x, pos.y, pos.z, 14, 3, [0.25, 0.22, 0.22], 1.4, 1.4, { drag: 1.5, g: -1.5, s1: 2.5 });
   flashLight(pos.x, pos.y + 1, pos.z, 0xff7a30, 60, 22, 0.45);
   const dmg = 30 + player.lvl * 8;
-  for (const e of enemies) { if (e.dead) continue; const d = e.pos.distanceTo(pos) - e.def.radius; if (d < 3.4) damageEnemy(e, Math.round(dmg * rand(0.9, 1.1)), 5, pos, Math.random() < 0.1); }
+  for (const e of enemies) { if (e.dead) continue; const d = e.pos.distanceTo(pos) - e.def.radius; if (d < 3.4) { const [a, c] = rollDmg(dmg); damageEnemy(e, a, 5, pos, c); } }
   AudioSys.play('boom'); addShake(0.12);
 }
 function castNova() {
@@ -1376,7 +1380,7 @@ function castNova() {
   for (let i = 0; i < 220; i++) { const a = Math.random() * Math.PI * 2; const sp = rand(14, 24); fx.emit(p.x, p.y + 1 + rand(-0.3, 0.6), p.z, Math.cos(a) * sp, rand(-1, 3), Math.sin(a) * sp, rand(0.8, 2.4), rand(1.6, 2.4), 4.2, rand(0.3, 0.6), rand(0.4, 0.7), { drag: 4 }); }
   flashLight(p.x, p.y + 2, p.z, 0x7ab8ff, 90, 28, 0.6);
   const dmg = 45 + player.lvl * 9;
-  for (const e of enemies) { if (e.dead) continue; const d = Math.hypot(e.pos.x - p.x, e.pos.z - p.z) - e.def.radius; if (d < 11) damageEnemy(e, Math.round(dmg * rand(0.9, 1.1)), 16, p, Math.random() < 0.15); }
+  for (const e of enemies) { if (e.dead) continue; const d = Math.hypot(e.pos.x - p.x, e.pos.z - p.z) - e.def.radius; if (d < 11) { const [a, c] = rollDmg(dmg); damageEnemy(e, a, 16, p, c); } }
   hitstop = 0.06; addShake(0.45); AudioSys.play('nova'); hero.armL.userData.cast = 0.4;
 }
 function castMeteor() {
@@ -1399,7 +1403,7 @@ function meteorImpact(p) {
   spawnRing(p.x, p.z, { color: [0.05, 0.03, 0.02], r1: 7, dur: 6, mode: 2, normal: true, depthTest: true });
   flashLight(p.x, p.y + 4, p.z, 0xff8a40, 260, 70, 1.0);
   const dmg = 160 + player.lvl * 26;
-  for (const e of enemies) { if (e.dead) continue; const d = Math.hypot(e.pos.x - p.x, e.pos.z - p.z) - e.def.radius; if (d < 9.5) damageEnemy(e, Math.round(dmg * rand(0.9, 1.1)), 20, p, Math.random() < 0.2); }
+  for (const e of enemies) { if (e.dead) continue; const d = Math.hypot(e.pos.x - p.x, e.pos.z - p.z) - e.def.radius; if (d < 9.5) { const [a, c] = rollDmg(dmg, 0.15); damageEnemy(e, a, 20, p, c); } }
   hitstop = 0.1; addShake(1.0); flashScreen(0.25); AudioSys.play('meteor');
 }
 function doDash() {
@@ -1420,7 +1424,7 @@ const canAct = () => state === 'play' && !player.dead && !dialogOpen && !paused 
 
 function damageEnemy(e, amount, knock, src, crit) {
   if (e.dead || e.dormant > 0) return;
-  e.hp -= amount; e.flash = 0.13;
+  e.hp -= amount; e.flash = 0.13; e.pop = 1;
   const dx = e.pos.x - src.x, dz = e.pos.z - src.z, d = Math.hypot(dx, dz) || 1;
   const kres = e.type === 'boss' ? 0.08 : e.type === 'golem' ? 0.35 : 1;
   e.kb.set(dx / d * knock * kres, dz / d * knock * kres);
@@ -1428,7 +1432,7 @@ function damageEnemy(e, amount, knock, src, crit) {
   damageNumber(top, String(amount), crit ? 'crit' : '');
   fx.burst(e.pos.x, e.pos.y + (e.def.barY || 8) * 0.45, e.pos.z, crit ? 34 : 18, crit ? 12 : 8, e.def.color, 0.35, 0.45, { drag: 3, g: 6 });
   AudioSys.play(crit ? 'crit' : 'hit');
-  if (e.state === 'idle' || e.state === 'return') e.state = 'chase';
+  e.lastHitT = realTime; if (e.state === 'idle' || e.state === 'return' || e.state === 'alert') { e.state = 'chase'; ensureAlertMark(e); e.alertShow = 0.4; }
   if (e.type === 'boss' && !e.enraged && e.hp < e.maxHp * 0.5) enrageBoss(e);
   if (e.hp <= 0) killEnemy(e);
 }
@@ -1451,7 +1455,7 @@ function enrageBoss(e) {
 }
 function hurtPlayer(dmg, src) {
   const p = player; if (p.dead || p.iframes > 0) return;
-  dmg = Math.round(dmg * rand(0.9, 1.1)); p.hp -= dmg; p.lastHurt = realTime; p.iframes = 0.25;
+  dmg = Math.max(1, Math.round(dmg * rand(0.9, 1.1) * ARMOR_K / (ARMOR_K + playerArmor()))); p.hp -= dmg; p.lastHurt = realTime; p.iframes = 0.25;
   hurtV = Math.min(1, hurtV + 0.6); addShake(0.35);
   damageNumber(p.pos.clone().add(new THREE.Vector3(0, 2.3, 0)), '-' + dmg, 'hurt');
   const dx = p.pos.x - src.x, dz = p.pos.z - src.z, d = Math.hypot(dx, dz) || 1; p.vel.x += dx / d * 9; p.vel.z += dz / d * 9;
@@ -1465,7 +1469,7 @@ function killPlayer() {
   setTimeout(() => {
     $('fade').style.opacity = 1;
     setTimeout(() => {
-      p.pos.set(P.village.x, 0, P.village.z + 18); p.pos.y = getHeight(p.pos.x, p.pos.z); p.vel.set(0, 0, 0); p.hp = p.maxHp; p.mp = p.maxMp; p.dead = false;
+      p.pos.set(P.village.x, 0, P.village.z + 18); p.pos.y = getHeight(p.pos.x, p.pos.z); p.vel.set(0, 0, 0); cam.cut = true; cam.shake = 0; p.hp = p.maxHp; p.mp = p.maxMp; p.dead = false;
       for (const e of enemies) if (e.state !== 'idle') { e.state = 'return'; }
       $('death').hidden = true; $('fade').style.opacity = 0; if (lost) toast(`איבדת ${lost} זהב`); requestLock();
     }, 700);
@@ -1474,8 +1478,13 @@ function killPlayer() {
 
 // ================= ENEMY AI =================
 const tmpV2 = new THREE.Vector2();
+const MAX_ATTACKERS = 2;
+let attackers = 0;
+const alertGeo = new THREE.OctahedronGeometry(0.2).scale(0.6, 1.7, 0.6), alertMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(4, 1.2, 0.3) });
+function ensureAlertMark(e) { if (e.alertMark || !e.def.barY) return; e.alertMark = new THREE.Mesh(alertGeo, alertMat); e.alertMark.position.y = e.def.barY + 0.55; e.root.add(e.alertMark); }
 function updateEnemies(dt) {
   const p = player;
+  attackers = 0; for (const o of enemies) if (!o.dead && o.type !== 'boss' && (o.state === 'windup' || o.state === 'recover')) attackers++;
   for (let idx = enemies.length - 1; idx >= 0; idx--) {
     const e = enemies[idx]; const d = e.def;
     if (e.dormant > 0) { e.dormant -= dt; if (e.dormant <= 0) e.root.visible = true; continue; }
@@ -1496,18 +1505,30 @@ function updateEnemies(dt) {
         if (e.wanderT <= 0) { e.wanderT = rand(3, 7); const a = Math.random() * Math.PI * 2, r = Math.random() * 14; e.wander = { x: e.home.x + Math.cos(a) * r, z: e.home.z + Math.sin(a) * r }; }
         const wx = e.wander.x - e.pos.x, wz = e.wander.z - e.pos.z, wd = Math.hypot(wx, wz);
         if (wd > 1) { mx = wx / wd; mz = wz / wd; spd = d.speed * 0.3; }
-        if (targetable && dist < d.aggro && e.type !== 'boss') { e.state = 'chase'; if (e.type === 'wolf') fx.burst(e.pos.x, e.pos.y + 2.5, e.pos.z, 8, 2, [3, 0.4, 0.4], 0.3, 0.6); }
+        if (targetable && dist < d.aggro && e.type !== 'boss') { e.state = 'alert'; e.timer = e.type === 'wolf' ? rand(0.2, 0.32) : rand(0.3, 0.5); ensureAlertMark(e); }
         if (e.type === 'boss' && targetable && dist < d.aggro) { e.state = 'chase'; AudioSys.play('roar'); addShake(0.6); banner('אדון הגולמים', 'שומר החורבות התעורר'); $('bossbar').hidden = false; }
+        break;
+      }
+      case 'alert': {
+        e.timer -= dt; e.face = lerpAngle(e.face, Math.atan2(dxp, dzp), 1 - Math.exp(-10 * dt));
+        if (e.timer <= 0) { e.state = 'chase'; e.alertShow = 0.5; }
         break;
       }
       case 'chase': {
         const hd = Math.hypot(e.pos.x - e.home.x, e.pos.z - e.home.z);
+        // hysteresis: engage at aggro range, give up only well beyond it and when not recently hit
+        if (e.type !== 'boss' && dist > d.aggro * 2.4 && realTime - (e.lastHitT || -99) > 4) { e.state = 'return'; break; }
         if (!targetable || (hd > (e.type === 'boss' ? 70 : 100) && e.zone !== null) || (e.type === 'boss' && dist > 90)) { e.state = 'return'; if (e.type === 'boss') $('bossbar').hidden = true; break; }
         if (!e.zone && e.type !== 'boss' && dist > 90) { e.state = 'return'; break; }
         e.face = lerpAngle(e.face, Math.atan2(dxp, dzp), 1 - Math.exp(-8 * dt));
         const reach = d.range + d.radius * 0.4;
-        if (dist <= reach && e.cd <= 0) {
-          e.state = 'windup'; e.attackCount++;
+        if (dist <= reach && e.cd <= 0 && e.type !== 'boss' && attackers >= MAX_ATTACKERS) {
+          // attack slots: wait your turn by circling at the edge of reach instead of piling in
+          const side = (e.home.x > 0 ? 1 : -1); mx = -dzp / dist * side; mz = dxp / dist * side;
+          if (dist < reach * 0.9) { mx -= dxp / dist * 0.7; mz -= dzp / dist * 0.7; }
+          spd = d.speed * 0.35;
+        } else if (dist <= reach && e.cd <= 0) {
+          e.state = 'windup'; e.attackCount++; if (e.type !== 'boss') attackers++;
           e.special = e.type === 'boss' && e.attackCount % 3 === 0;
           e.timer = e.special ? 1.35 : d.windup * (e.enraged ? 0.7 : 1);
           if (e.special) e.slamRing = spawnRing(e.pos.x, e.pos.z, { color: [3.5, 0.5, 2.5], r1: 12, dur: e.timer, mode: 1, follow: e.pos, depthTest: false });
@@ -1588,8 +1609,14 @@ function animateEnemy(e, dt, dist) {
     e.armL.rotation.x = damp(e.armL.rotation.x, armX, 18, dt); e.armR.rotation.x = damp(e.armR.rotation.x, e.special || e.type === 'golem' ? armX : -armX * 0.3, 18, dt);
     e.body.position.y = Math.abs(Math.sin(ph)) * 0.08;
   }
+  // hit pop: stretch, overshoot, and return exactly to rest when it ends
+  const pv = popValue(e, dt);
+  if (e.type === 'slime') e.body.scale.multiply(_pop.set(1 + 0.22 * pv, 1 - 0.18 * pv, 1 + 0.22 * pv)); else e.body.scale.set(1 + 0.16 * pv, 1 - 0.12 * pv, 1 + 0.16 * pv);
+  if (e.alertMark) { e.alertMark.visible = e.state === 'alert' || e.alertShow > 0; e.alertShow -= dt; e.alertMark.rotation.y += dt * 5; }
   if (e.bar) { const show = e.hp < e.maxHp && dist < 45; e.bar.visible = show; if (show) { e.bar.userData.fill.scale.x = Math.max(0.001, e.hp / e.maxHp); e.bar.quaternion.copy(e.root.quaternion).invert().multiply(camera.quaternion); } }
 }
+const _pop = new THREE.Vector3();
+function popValue(o, dt) { if (!(o.pop > 0)) return 0; o.pop = Math.max(0, o.pop - dt / 0.22); const t = 1 - o.pop; return Math.sin(t * Math.PI * 1.5) * o.pop; }
 function updateSpawns(dt) {
   for (const z of ZONES) {
     for (let i = z.respawn.length - 1; i >= 0; i--) {
@@ -1636,7 +1663,7 @@ function updatePlayer(dt) {
   if (jumpQueued && p.onGround && canAct()) { p.vy = 9.5; p.onGround = false; }
   jumpQueued = false;
   p.vy -= 26 * dt; p.pos.y += p.vy * dt;
-  if (p.pos.y <= gh) { if (!p.onGround && p.vy < -11) { dust.burst(p.pos.x, gh + 0.2, p.pos.z, 12, 4, [0.55, 0.5, 0.42], 0.8, 0.8, { drag: 3, s1: 1.6 }); AudioSys.play('step'); } p.pos.y = gh; p.vy = 0; p.onGround = true; }
+  if (p.pos.y <= gh) { if (!p.onGround && p.vy < -11) { p.pop = 1; dust.burst(p.pos.x, gh + 0.2, p.pos.z, 12, 4, [0.55, 0.5, 0.42], 0.8, 0.8, { drag: 3, s1: 1.6 }); AudioSys.play('step'); } p.pos.y = gh; p.vy = 0; p.onGround = true; }
   else if (p.onGround && p.vy <= 0 && p.pos.y - gh < 0.8) { p.pos.y = gh; p.vy = 0; }
   else p.onGround = false;
   // attack timeline
@@ -1660,6 +1687,7 @@ function updatePlayer(dt) {
 function animateHero(dt, sp, sprinting) {
   const p = player, h = hero;
   h.root.position.copy(p.pos);
+  const lp = popValue(p, dt); h.root.scale.set(1 + 0.12 * lp, 1 - 0.16 * lp, 1 + 0.12 * lp);
   let face = p.facing;
   const atkK = p.atkTimer > 0 ? 1 - p.atkTimer / p.atkTotal : 0;
   if (p.combo === 2 && p.atkTimer > 0) face += smooth(0.15, 0.7, atkK) * Math.PI * 2;
@@ -1799,14 +1827,23 @@ function updateCamera(dt) {
     const t = player.pos; tl = lookTmp.set(t.x, t.y + 1.8, t.z);
     const cp = Math.cos(cam.pitch), spp = Math.sin(cam.pitch);
     tp = posTmp.set(tl.x + Math.sin(cam.yaw) * cp * cam.dist, tl.y + spp * cam.dist, tl.z + Math.cos(cam.yaw) * cp * cam.dist);
+    // occlusion probe: march from the focus to the camera and pull in before the first sample the terrain blocks
+    for (let i = 1; i <= 12; i++) { const f = i / 12; const x = lerp(tl.x, tp.x, f), z = lerp(tl.z, tp.z, f); if (getHeight(x, z) + 0.7 > lerp(tl.y, tp.y, f)) { const k = Math.max(0.18, (i - 1) / 12); tp.set(lerp(tl.x, tp.x, k), lerp(tl.y, tp.y, k), lerp(tl.z, tp.z, k)); break; } }
     const gh = getHeight(tp.x, tp.z); if (tp.y < gh + 0.8) tp.y = gh + 0.8;
+    if (cam.cut) { cam.cut = false; cam.pos.copy(tp); cam.look.copy(tl); }
     const fast = cam.pos.distanceTo(tp) > 60;
     if (fast) { cam.pos.x = damp(cam.pos.x, tp.x, 2.4, dt); cam.pos.y = damp(cam.pos.y, tp.y, 2.4, dt); cam.pos.z = damp(cam.pos.z, tp.z, 2.4, dt); cam.look.lerp(tl, 1 - Math.exp(-3 * dt)); }
     else { cam.pos.lerp(tp, 1 - Math.exp(-14 * dt)); cam.look.lerp(tl, 1 - Math.exp(-18 * dt)); }
   }
   camera.position.copy(cam.pos);
-  if (cam.shake > 0) { const s = cam.shake * cam.shake * 0.6; camera.position.x += (Math.random() - 0.5) * s; camera.position.y += (Math.random() - 0.5) * s; camera.position.z += (Math.random() - 0.5) * s; cam.shake = Math.max(0, cam.shake - dt * 1.8); }
   camera.lookAt(cam.look);
+  // trauma shake (game-feel): offset = trauma^2 * summed sines, applied on top of the smoothed follow; dt here is real time so it keeps decaying during hit-stop
+  if (cam.shake > 0) {
+    cam.shakeT += dt * 30; const s = cam.shake * cam.shake;
+    camera.translateX(0.55 * s * Math.sin(cam.shakeT * 1.7)); camera.translateY(0.4 * s * Math.sin(cam.shakeT * 2.3));
+    camera.rotateZ(0.035 * s * Math.sin(cam.shakeT * 1.1));
+    cam.shake = Math.max(0, cam.shake - dt * 1.3);
+  }
 }
 
 // ================= WORLD ANIM / AMBIENCE =================
